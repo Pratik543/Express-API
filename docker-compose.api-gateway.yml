@@ -34,3 +34,9 @@ services:
     networks:
       - traefik
       - project-a-network
+
+networks:
+  traefik:
+    name: traefik
+  project-a-network:
+    name: project-a-network
