@@ -13,7 +13,8 @@ FROM node:22-alpine AS production
 WORKDIR /app
 
 # Copy built app from builder stage
-COPY --from=builder . .
+COPY --from=builder /app/node_modules ./node_modules
+COPY . .
 
 ENV NODE_ENV=production
 
