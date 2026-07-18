@@ -10,12 +10,6 @@ const { requestLogger, securityHeaders } = require('./middleware/security');
 
 const app = express();
 
-// Environment validation
-if (!process.env.PORT) {
-  console.error('Error: PORT is required in environment variables');
-  process.exit(1);
-}
-
 const PORT = process.env.PORT || 3000;
 const NODE_ENV = process.env.NODE_ENV || 'development';
 
