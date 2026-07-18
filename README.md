@@ -13,7 +13,7 @@ The app runs as a multi-stage node:22-alpine image with 5 api-service replicas l
 ## Application Images
 
 ![Docker Containers](./images(deployed)/server's-docker-containers.png)
-![API Documentation Page](./images(deployed)/docs-route.png)
+![API Documentation Page](./images(deployed)/0.docs-route.png)
 ![Dozzle Logging Dashboard](./images(deployed)/5.dozzle-dashboard.png)
 
 ## Features
