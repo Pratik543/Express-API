@@ -1,6 +1,20 @@
 # Express App - Production Ready API
 
 A production-ready Node.js Express application with multiple routes, built with security best practices and modern development patterns.
+The app runs as a multi-stage node:22-alpine image with 5 api-service replicas load-balanced by a Caddy reverse proxy. Traefik acts as the edge gateway with automatic HTTPS (Let's Encrypt ACME), HTTP→HTTPS redirection, and a dashboard, while Dozzle provides live Docker container log streaming.
+
+![User Flow](./images(deployed)/user-flow.png)
+![System Design](./images(deployed)/system-design.png)
+
+- Project A domain goes to traefik docker container which will be publicly exposed
+- Then traefik checks which project / subdomain is requested , in case of project a it will load balance to project 'a' caddy server container where 4 replicas of node project is running
+- Then Caddy reverse proxy points the request to our internal node application 
+
+## Application Images
+
+![Docker Containers](./images(deployed)/server's-docker-containers.png)
+![API Documentation Page](./images(deployed)/docs-route.png)
+![Dozzle Logging Dashboard](./images(deployed)/5.dozzle-dashboard.png)
 
 ## Features
 
@@ -159,6 +173,7 @@ Starts Dozzle behind nginx, routed by Traefik at `https://logs.devopschamp.site`
 Certificates are issued automatically by Traefik using the `cert-resolver` ACME resolver defined in the gateway stack (HTTP-01 challenge on the `web` entrypoint). Certificates are persisted to `./certificates/letsencrypt/acme.json` on the gateway host.
 
 Notes:
+
 - `acme.json` must be a **file**, not a directory, and must be `chmod 600`.
 - If a certificate fails to issue, check `docker logs` on the Traefik container for `acme` errors before retrying — repeated failed attempts can hit Let's Encrypt rate limits.
 
@@ -208,16 +223,19 @@ The logs and gateway stacks use upstream images (`dozzle`, `nginx`, `traefik`) a
 ## API Usage Examples
 
 ### Get all users
+
 ```bash
 curl http://localhost:3000/api/v1/users
 ```
 
 ### Get user by ID
+
 ```bash
 curl http://localhost:3000/api/v1/users/1
 ```
 
 ### Create a user
+
 ```bash
 curl -X POST http://localhost:3000/api/v1/users \
   -H "Content-Type: application/json" \
@@ -225,6 +243,7 @@ curl -X POST http://localhost:3000/api/v1/users \
 ```
 
 ### Get products with filters
+
 ```bash
 # Filter by category
 curl http://localhost:3000/api/v1/products?category=Electronics
@@ -237,6 +256,7 @@ curl http://localhost:3000/api/v1/products?search=laptop
 ```
 
 ### Health check
+
 ```bash
 curl http://localhost:3000/health
 ```
@@ -306,6 +326,12 @@ The server handles graceful shutdown on SIGTERM and SIGINT signals, ensuring:
 - Existing connections are completed
 - Database connections are closed
 - Resources are properly released
+
+## 🤝 **Connect with Me**
+
+Let's connect and discuss DevOps!  
+
+[![LinkedIn](https://img.shields.io/badge/LinkedIn-0077B5?style=for-the-badge&logo=linkedin&logoColor=white)](https://www.linkedin.com/in/pratik-k-gupta/)  
 
 ## License
 
