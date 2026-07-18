@@ -21,30 +21,30 @@ A production-ready Node.js Express application with multiple routes, built with 
 
 ### Public Routes
 
-| Route | Method | Description |
-|-------|--------|-------------|
-| `/` | GET | Welcome message |
-| `/version` | GET | API version info |
-| `/health` | GET | Health check endpoint |
-| `/api/v1/docs` | GET | Interactive HTML API documentation (rendered from `API.md`) |
+| Route          | Method | Description                                                 |
+| -------------- | ------ | ----------------------------------------------------------- |
+| `/`            | GET    | Welcome message                                             |
+| `/version`     | GET    | API version info                                            |
+| `/health`      | GET    | Health check endpoint                                       |
+| `/api/v1/docs` | GET    | Interactive HTML API documentation (rendered from `API.md`) |
 
 ### API Routes (v1)
 
-| Route | Method | Description |
-|-------|--------|-------------|
-| `/api/v1/users` | GET | Get all users |
-| `/api/v1/users/:id` | GET | Get user by ID |
-| `/api/v1/users` | POST | Create new user |
-| `/api/v1/users/:id` | PUT | Update user |
-| `/api/v1/users/:id` | DELETE | Delete user |
-| `/api/v1/products` | GET | Get all products (supports filtering) |
-| `/api/v1/products/:id` | GET | Get product by ID |
-| `/api/v1/products` | POST | Create new product |
-| `/api/v1/products/:id` | PUT | Update product |
-| `/api/v1/products/:id` | DELETE | Delete product |
-| `/api/v1/auth/login` | POST | User login |
-| `/api/v1/auth/logout` | POST | User logout |
-| `/api/v1/auth/me` | GET | Get current user |
+| Route                  | Method | Description                           |
+| ---------------------- | ------ | ------------------------------------- |
+| `/api/v1/users`        | GET    | Get all users                         |
+| `/api/v1/users/:id`    | GET    | Get user by ID                        |
+| `/api/v1/users`        | POST   | Create new user                       |
+| `/api/v1/users/:id`    | PUT    | Update user                           |
+| `/api/v1/users/:id`    | DELETE | Delete user                           |
+| `/api/v1/products`     | GET    | Get all products (supports filtering) |
+| `/api/v1/products/:id` | GET    | Get product by ID                     |
+| `/api/v1/products`     | POST   | Create new product                    |
+| `/api/v1/products/:id` | PUT    | Update product                        |
+| `/api/v1/products/:id` | DELETE | Delete product                        |
+| `/api/v1/auth/login`   | POST   | User login                            |
+| `/api/v1/auth/logout`  | POST   | User logout                           |
+| `/api/v1/auth/me`      | GET    | Get current user                      |
 
 ### Query Parameters for Products
 
@@ -90,17 +90,120 @@ npm start
 pm2 start src/server.js --name "express-app"
 ```
 
+# Deployment
+
+This project runs as three separate Docker Compose stacks that share Docker networks so Traefik can route traffic to each service:
+
+| Stack       | File                             | Purpose                                                    |
+| ----------- | -------------------------------- | ---------------------------------------------------------- |
+| API Gateway | `docker-compose.api-gateway.yml` | Traefik reverse proxy, TLS termination, ACME cert issuance |
+| Server      | `docker-compose.server.yml`      | Main application (`api-service`) behind Caddy              |
+| Logs        | `docker-compose.logs.yml`        | Dozzle log viewer behind nginx                             |
+
+Traefik must be started **first**, since the other stacks join its Docker networks and rely on it for routing and TLS.
+
+## Prerequisites
+
+- Docker and Docker Compose installed on the host
+- DNS A records pointing to the server's public IP for:
+  - `devopschamp.site`
+  - `logs.devopschamp.site`
+- Ports `80` and `443` open and reachable from the internet (required for the Let's Encrypt HTTP-01 challenge)
+
+## Networks
+
+The stacks communicate over three external/shared Docker networks:
+
+- `traefik` — internal to the gateway stack
+- `project-a-network` — shared between the gateway and the server stack
+- `traefik-dozzle` — shared between the gateway and the logs stack
+
+These networks are created automatically the first time the gateway stack runs, since it declares them by name. The server and logs stacks reference `project-a-network` and `traefik-dozzle` as `external: true`, so the gateway stack must be deployed first.
+
+## Docker Compose Deployment order
+
+### 1. API Gateway (Traefik)
+
+```bash
+docker compose -f docker-compose.api-gateway.yml up -d
+```
+
+This starts Traefik, listening on ports `80` and `443`, and creates the shared networks. It also handles automatic HTTPS certificate issuance via Let's Encrypt for any service with the correct labels.
+
+Verify Traefik is healthy:
+
+```bash
+docker logs traefik-traefik-1
+```
+
+Optional: the Traefik dashboard is enabled (`--api.dashboard=true`) but currently has no `Host()` rule configured on its router, so it isn't exposed externally by default.
+
+### 2. Server application
+
+```bash
+docker compose -f docker-compose.server.yml up -d
+```
+
+Starts `api-service` (5 replicas) and a Caddy front proxy, routed by Traefik at `https://devopschamp.site`.
+
+### 3. Logs (Dozzle)
+
+```bash
+docker compose -f docker-compose.logs.yml up -d
+```
+
+Starts Dozzle behind nginx, routed by Traefik at `https://logs.devopschamp.site`. Dozzle reads container logs via the mounted Docker socket (`/var/run/docker.sock`), so it can see logs for all containers on the host, not just this stack.
+
+## TLS certificates
+
+Certificates are issued automatically by Traefik using the `cert-resolver` ACME resolver defined in the gateway stack (HTTP-01 challenge on the `web` entrypoint). Certificates are persisted to `./certificates/letsencrypt/acme.json` on the gateway host.
+
+Notes:
+- `acme.json` must be a **file**, not a directory, and must be `chmod 600`.
+- If a certificate fails to issue, check `docker logs` on the Traefik container for `acme` errors before retrying — repeated failed attempts can hit Let's Encrypt rate limits.
+
+## Useful commands
+
+```bash
+# Bring everything down (per stack)
+docker compose -f docker-compose.api-gateway.yml down
+docker compose -f docker-compose.server.yml down
+docker compose -f docker-compose.logs.yml down
+
+# Tail Traefik logs
+docker logs -f traefik-traefik-1
+
+# Check which networks exist
+docker network ls
+
+# Force cert re-issuance (after fixing acme.json)
+rm -f ./certificates/letsencrypt/acme.json
+touch ./certificates/letsencrypt/acme.json
+chmod 600 ./certificates/letsencrypt/acme.json
+docker compose -f docker-compose.api-gateway.yml restart traefik
+```
+
+## Redeploying after code changes
+
+For the server stack, rebuild the image before recreating containers:
+
+```bash
+docker compose -f docker-compose.server.yml up -d --build
+```
+
+The logs and gateway stacks use upstream images (`dozzle`, `nginx`, `traefik`) and don't require a build step — `docker compose pull` followed by `up -d` is enough to update them.
+
 ## Environment Variables
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `NODE_ENV` | Environment (development/production) | development |
-| `PORT` | Server port | 3000 |
-| `CORS_ORIGIN` | Allowed CORS origin | * |
-| `API_RATE_LIMIT_WINDOW_MS` | Rate limit window (ms) | 900000 |
-| `API_RATE_LIMIT_MAX` | Max requests per window | 100 |
-| `DATABASE_URL` | MongoDB connection string | - |
-| `JWT_SECRET` | JWT secret key | - |
+| Variable                   | Description                          | Default     |
+| -------------------------- | ------------------------------------ | ----------- |
+| `NODE_ENV`                 | Environment (development/production) | development |
+| `PORT`                     | Server port                          | 3000        |
+| `CORS_ORIGIN`              | Allowed CORS origin                  | *           |
+| `API_RATE_LIMIT_WINDOW_MS` | Rate limit window (ms)               | 900000      |
+| `API_RATE_LIMIT_MAX`       | Max requests per window              | 100         |
+| `DATABASE_URL`             | MongoDB connection string            | -           |
+| `JWT_SECRET`               | JWT secret key                       | -           |
 
 ## API Usage Examples
 
